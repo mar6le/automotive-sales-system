@@ -1,0 +1,92 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: automotive-sales-system
+
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://automotive-sales-db:5432/automotive_sales
+    driver-class-name: org.postgresql.Driver
+    username: automotive_user
+    password: automotive_password
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://automotive-keycloak:8080/realms/automotive
+
+management:
+  tracing:
+    enabled: true
+
+logging:
+  level:
+    com.automotive.sales: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  show-actuator: true
+
+# Keycloak Configuration
+keycloak:
+  auth-server-url: http://automotive-keycloak:8080
+  realm: automotive
+  resource: automotive-sales-app
+  public-client: true
+  bearer-only: true
+  ssl-required: external
+  use-resource-role-mappings: true
+
+app:
+  jwt:
+    secret: xEa3afdckozHVfz9Dp12nA3Iav79i0Ku
+    expiration: 86400000 # 24 hours
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:8080,http://localhost:8180
+    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true

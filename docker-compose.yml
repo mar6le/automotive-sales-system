@@ -1,0 +1,128 @@
+version: "3.8"
+
+services:
+  adminer:
+    restart: always
+    image: adminer:latest
+    environment:
+      ADMINER_PLUGINS: "dump-json"
+      ADMINER_DESIGN: "rm-soft"
+    depends_on:
+      - postgres
+    ports:
+      - 8085:8080
+    networks:
+      - automotive-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: automotive-sales-db
+    environment:
+      POSTGRES_DB: automotive_sales
+      POSTGRES_USER: automotive_user
+      POSTGRES_PASSWORD: automotive_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - automotive-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automotive_user -d automotive_sales"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Keycloak Identity and Access Management
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0.5
+    container_name: automotive-keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://automotive-sales-db:5432/automotive_sales
+      KC_DB_USERNAME: automotive_user
+      KC_DB_PASSWORD: automotive_password
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+    ports:
+      - "8180:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - automotive-network
+    command: start-dev
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    restart: unless-stopped
+
+  # Automotive Sales Application
+  automotive-sales-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: automotive-sales-app
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://automotive-sales-db:5432/automotive_sales
+      SPRING_DATASOURCE_USERNAME: automotive_user
+      SPRING_DATASOURCE_PASSWORD: automotive_password
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://automotive-keycloak:8080/realms/automotive
+      KEYCLOAK_AUTH_SERVER_URL: http://automotive-keycloak:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    networks:
+      - automotive-network
+    volumes:
+      - app_logs:/app/logs
+    restart: unless-stopped
+
+  # Redis for Caching (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: automotive-sales-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - automotive-network
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: automotive-sales-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - automotive-sales-app
+    networks:
+      - automotive-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  keycloak_data:
+  redis_data:
+  app_logs:
+
+networks:
+  automotive-network:
